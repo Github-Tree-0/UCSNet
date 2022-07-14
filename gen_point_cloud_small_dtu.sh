@@ -10,4 +10,4 @@ CUDA_VISIBLE_DEVICES=0 python test.py --root_path $root_path --test_list $test_l
 
 CUDA_VISIBLE_DEVICES=0 python ./Depth_Fusion/fuse.py --root_path $save_path --save_path $points_save_path \
                 --data_list $test_list --dist_thresh 0.001 --prob_thresh 0.6 \
-                --num_consist 10 --device "cuda"
+                --num_consist 2 --device "cuda"
