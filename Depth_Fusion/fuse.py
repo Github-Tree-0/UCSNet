@@ -181,7 +181,7 @@ def load_data(root_path, scene_name, thresh):
 		depths.append(torch.from_numpy(dep_map).unsqueeze(0))
 		probs.append(torch.from_numpy(conf_map).unsqueeze(0))
 
-		feature, _ = read_pfm('{}/{}/feature/fea_{:08d}_3.pfm'.format(root_path, scene_name, frame_id))
+		feature = np.load('{}/{}/feature/fea_{:08d}_3.npy'.format(root_path, scene_name, frame_id))
 		features.append(torch.from_numpy(feature).unsqueeze(0))
 
 		rgb = np.array(Image.open(path))

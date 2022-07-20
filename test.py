@@ -105,7 +105,7 @@ def main(args):
 
             write_pfm(depth_path+"/dep_{:08d}_{}.pfm".format(frame_idx, stage_id+1), cur_dep)
             write_pfm(conf_path+'/conf_{:08d}_{}.pfm'.format(frame_idx, stage_id+1), cur_conf)
-            write_pfm(feature_path+"/fea_{:08d}_{}.pfm".format(frame_idx, stage_id+1), cur_feature)
+            np.save(feature_path+"/fea_{:08d}_{}.npy".format(frame_idx, stage_id+1), cur_feature)
 
         print('Saved results for {}/{} (resolution: {})'.format(scene_name, frame_idx, cur_dep.shape))
 
