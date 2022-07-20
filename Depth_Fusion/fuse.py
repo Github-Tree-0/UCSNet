@@ -100,12 +100,13 @@ def write_pfm(file, image, scale=1):
     file.write(image_string)
     file.close()
 
-def write_ply(file, points):
+def write_ply(file, points, probs, features):
 	pcd = o3d.geometry.PointCloud()
 	pcd.points = o3d.utility.Vector3dVector(points[:, :3])
 	pcd.colors = o3d.utility.Vector3dVector(points[:, 3:] / 255.)
 	o3d.io.write_point_cloud(file, pcd, write_ascii=False)
-
+	np.save(file[:-4]+"_probs.npy", probs)
+	np.save(file[:-4]+"_features.npy", features)
 
 def filter_depth(ref_depth, src_depths, ref_proj, src_projs):
 	'''
@@ -160,6 +161,8 @@ def load_data(root_path, scene_name, thresh):
 	depths = []
 	projs = []
 	rgbs = []
+	probs = []
+	features = []
 	for path in rgb_paths:
 		frame_id = int(osp.basename(path).split('.')[0])
 
@@ -176,6 +179,10 @@ def load_data(root_path, scene_name, thresh):
 
 		dep_map = dep_map * (conf_map>thresh).astype(np.float32)
 		depths.append(torch.from_numpy(dep_map).unsqueeze(0))
+		probs.append(torch.from_numpy(conf_map).unsqueeze(0))
+
+		feature, _ = read_pfm('{}/{}/feature/fea_{:08d}_3.pfm'.format(root_path, scene_name, frame_id))
+		features.append(torch.from_numpy(feature).unsqueeze(0))
 
 		rgb = np.array(Image.open(path))
 		rgbs.append(rgb)
@@ -187,22 +194,24 @@ def load_data(root_path, scene_name, thresh):
 		depths = depths.cuda()
 		projs = projs.cuda()
 
-	return depths, projs, rgbs
+	return depths, projs, rgbs, probs, features
 
-def extract_points(pc, mask, rgb):
+def extract_points(pc, mask, rgb, prob, feature):
 	pc = pc.cpu().numpy()
 	mask = mask.cpu().numpy()
 
 	mask = np.reshape(mask, (-1,))
 	pc = np.reshape(pc, (-1, 3))
 	rgb = np.reshape(rgb, (-1, 3))
+	points_prob = np.reshape(prob, (-1,))[np.where(mask)]
+	points_feature = np.reshape(feature, (-1, feature.shape[-1]))[np.where(mask)]
 
 	points = pc[np.where(mask)]
 	colors = rgb[np.where(mask)]
 
 	points_with_color = np.concatenate([points, colors], axis=1)
 
-	return points_with_color
+	return points_with_color, points_prob, points_feature
 
 def main():
 	mkdir_p(args.save_path)
@@ -211,10 +220,12 @@ def main():
 
 	for scene in all_scenes:
 		# mkdir_p('{}/{}'.format(args.save_path, scene))
-		depths, projs, rgbs = load_data(args.root_path, scene, args.prob_thresh)
+		depths, projs, rgbs, probs, features = load_data(args.root_path, scene, args.prob_thresh)
 		tot_frame = depths.shape[0]
 		height, width = depths.shape[2], depths.shape[3]
 		points = []
+		points_prob = []
+		points_feature = []
 
 		print('Scene: {} total: {} frames'.format(scene, tot_frame))
 		for i in range(tot_frame):
@@ -238,12 +249,14 @@ def main():
 			final_mask = (val_cnt >= args.num_consist).squeeze(0)
 			avg_points = torch.div(pc_buff, val_cnt).permute(1, 2, 0)
 
-			final_pc = extract_points(avg_points, final_mask, rgbs[i])
+			final_pc, pc_prob, pc_feature = extract_points(avg_points, final_mask, rgbs[i], probs[i], features[i])
 			points.append(final_pc)
+			points_prob.append(pc_prob)
+			points_feature.append(pc_feature)
 			print('Processing {} {}/{} ...'.format(scene, i+1, tot_frame))
 			# np.save('{}/{}/{:08d}.npy'.format(args.save_path, scene, i+1), final_pc)
 
-		write_ply('{}/{}.ply'.format(args.save_path, scene), np.concatenate(points, axis=0))
+		write_ply('{}/{}.ply'.format(args.save_path, scene), np.concatenate(points, axis=0), np.concatenate(points_prob), np.concatenate(points_feature))
 		del points, depths, rgbs, projs
 
 		gc.collect()

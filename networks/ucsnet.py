@@ -64,7 +64,7 @@ def compute_depth(feats, proj_mats, depth_samps, cost_reg, lamb, is_training=Fal
 
         feature_sum += warped_feat
 
-    feature = feature_sum.div_(num_views)
+    feature = feature_sum.div_(num_views).squeeze(2)
 
     with torch.no_grad():
         prob_volume_sum4 = 4 * F.avg_pool3d(F.pad(prob_volume.unsqueeze(1), pad=(0, 0, 0, 0, 1, 2)), (4, 1, 1),

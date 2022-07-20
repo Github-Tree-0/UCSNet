@@ -86,6 +86,8 @@ def main(args):
         mkdir_p(cam_path)
         conf_path = osp.join(scene_path, 'confidence')
         mkdir_p(conf_path)
+        feature_path = osp.join(scene_path, 'feature')
+        mkdir_p(feature_path)
 
 
         ref_img = sample["imgs"][0, 0].numpy().transpose(1, 2, 0) * 255
@@ -99,9 +101,11 @@ def main(args):
             cur_res = outputs["stage{}".format(stage_id+1)]
             cur_dep = cur_res["depth"][0]
             cur_conf = cur_res["confidence"][0]
+            cur_feature = cur_res["feature"][0].permute((1, 2, 0)) # [C, H, W] -> [H, W, C]
 
             write_pfm(depth_path+"/dep_{:08d}_{}.pfm".format(frame_idx, stage_id+1), cur_dep)
             write_pfm(conf_path+'/conf_{:08d}_{}.pfm'.format(frame_idx, stage_id+1), cur_conf)
+            write_pfm(feature_path+"/fea_{:08d}_{}.pfm".format(frame_idx, stage_id+1), cur_feature)
 
         print('Saved results for {}/{} (resolution: {})'.format(scene_name, frame_idx, cur_dep.shape))
 
