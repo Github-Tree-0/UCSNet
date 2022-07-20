@@ -47,6 +47,9 @@ def compute_depth(feats, proj_mats, depth_samps, cost_reg, lamb, is_training=Fal
         del warped_volume
     volume_variance = volume_sq_sum.div_(num_views).sub_(volume_sum.div_(num_views).pow_(2))
 
+    # Use this as features
+    volume_mean = volume_sum.div_(num_views)
+
     prob_volume_pre = cost_reg(volume_variance).squeeze(1)
     prob_volume = F.softmax(prob_volume_pre, dim=1)
     depth = depth_regression(prob_volume, depth_values=depth_samps)
@@ -62,7 +65,7 @@ def compute_depth(feats, proj_mats, depth_samps, cost_reg, lamb, is_training=Fal
     samp_variance = (depth_samps - depth.unsqueeze(1)) ** 2
     exp_variance = lamb * torch.sum(samp_variance * prob_volume, dim=1, keepdim=False) ** 0.5
 
-    return {"depth": depth, "confidence": prob_conf, 'variance': exp_variance}
+    return {"depth": depth, "confidence": prob_conf, 'variance': exp_variance, 'feature': volume_mean}
 
 class UCSNet(nn.Module):
     def __init__(self, lamb=1.5, stage_configs=[64, 32, 8], grad_method="detach", base_chs=[8, 8, 8], feat_ext_ch=8):
