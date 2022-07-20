@@ -101,7 +101,7 @@ def main(args):
             cur_res = outputs["stage{}".format(stage_id+1)]
             cur_dep = cur_res["depth"][0]
             cur_conf = cur_res["confidence"][0]
-            cur_feature = cur_res["feature"][0].permute((1, 2, 0)) # [C, H, W] -> [H, W, C]
+            cur_feature = np.transpose(cur_res["feature"][0], (1, 2, 0)) # [C, H, W] -> [H, W, C]
 
             write_pfm(depth_path+"/dep_{:08d}_{}.pfm".format(frame_idx, stage_id+1), cur_dep)
             write_pfm(conf_path+'/conf_{:08d}_{}.pfm'.format(frame_idx, stage_id+1), cur_conf)
