@@ -45,6 +45,7 @@ parser.add_argument('--opt_level', type=str, default="O0")
 parser.add_argument('--seed', type=int, default=0)
 parser.add_argument("--local_rank", type=int, default=0)
 
+parser.add_argument("--feat_ext_ch", type=int, default=8)
 
 args = parser.parse_args()
 
