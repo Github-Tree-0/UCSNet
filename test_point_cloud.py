@@ -17,7 +17,6 @@ from collections import *
 cudnn.benchmark = True
 
 
-
 def filter_depth(ref_depth, src_depths, ref_proj, src_projs):
 	'''
 	
@@ -162,6 +161,8 @@ def test_main(args):
 
         print('Saved results for {}/{} (resolution: {})'.format(scene_name, frame_idx, res['depth'][0].shape))
 
+    for key in scene_results.keys():
+        scene_results[key] = torch.cat(scene_results[key], 0)
     results[last_name] = scene_results
 
     torch.cuda.empty_cache()
