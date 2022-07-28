@@ -50,6 +50,9 @@ def filter_depth(ref_depth, src_depths, ref_proj, src_projs):
 def extract_points(pc, mask, rgb, prob, feature):
 	pc = pc.cpu().numpy()
 	mask = mask.cpu().numpy()
+	rgb = rgb.cpu().numpy()
+	prob = prob.cpu().numpy()
+	feature = feature.cpu().numpy()
 
 	mask = np.reshape(mask, (-1,))
 	pc = np.reshape(pc, (-1, 3))
@@ -71,7 +74,8 @@ def process_data(args, scene_results, thresh):
     probs = scene_results['confidence']
     features = scene_results['feature']
 
-    depths = depths[probs>thresh].float()
+    depths[probs.unsqueeze(1)<=thresh] = 0
+    depths = depths.float()
     projs = torch.cat([torch.eye(4).unsqueeze(0) for _ in range(cams.shape[0])], 0)
     projs[:, :3, :4] = cams[:, 1, :3, :3] @ cams[:, 0, :3, :4]
     projs = projs.float()
@@ -79,6 +83,9 @@ def process_data(args, scene_results, thresh):
     if args.device == 'cuda' and torch.cuda.is_available():
         depths = depths.cuda()
         projs = projs.cuda()
+    else:
+        depths = depths.cpu()
+        projs = projs.cpu()
 
     return depths, projs, rgbs, probs, features
 
@@ -116,6 +123,7 @@ def test_main(args):
             if last_name != '':
                 for key in scene_results.keys():
                     scene_results[key] = torch.cat(scene_results[key], 0)
+                scene_results['depth'] = scene_results['depth'].unsqueeze(1)
                 results[last_name] = scene_results
 
             last_name = scene_name
@@ -163,6 +171,7 @@ def test_main(args):
 
     for key in scene_results.keys():
         scene_results[key] = torch.cat(scene_results[key], 0)
+    scene_results['depth'] = scene_results['depth'].unsqueeze(1)
     results[last_name] = scene_results
 
     torch.cuda.empty_cache()
