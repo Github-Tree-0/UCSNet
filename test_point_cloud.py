@@ -156,7 +156,7 @@ def test_main(args):
         res = outputs['stage3']
         h, w = res['depth'][0].shape
         scene_results['depth'].append(res['depth'][0].unsqueeze(0))
-        confidence = torch.tensor(cv2.resize(outputs['stage1']['confidence'][0].numpy(), (w, h), interpolation=cv2.INTER_LINEAR))
+        confidence = torch.tensor(cv2.resize(outputs['stage1']['confidence'][0].cpu().numpy(), (w, h), interpolation=cv2.INTER_LINEAR))
         scene_results['confidence'].append(confidence.unsqueeze(0))
         scene_results['feature'].append(res['feature'][0].permute((1, 2, 0)).unsqueeze(0))
 
