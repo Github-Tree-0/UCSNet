@@ -233,11 +233,11 @@ class MVSTestSet(Dataset):
 
         images = np.stack(images).transpose([0, 3, 1, 2])
 
-        res['imgs'] = images                      # [frame_num, 3, H, W]
-        res['proj_matrices'] = proj_mats          # map of [frame_num, 2, 4, 4]
-        res['depth_values'] = np.array(dp_values) # [frame_num, 2]
+        res['imgs'] = images                       # [frame_num, 3, H, W]
+        res['proj_matrices'] = proj_mats           # map of [frame_num, 2, 4, 4]
+        res['depth_values'] = np.array(dp_values)  # [frame_num, 2]
         res['scene_name'] = scene_name
-        res['frame_idxes'] = frame_idxes          # [frame_num, 1+num_views]
+        res['frame_idxes'] = np.array(frame_idxes) # [frame_num, 1+num_views]
 
         return res
 

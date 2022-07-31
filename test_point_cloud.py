@@ -5,7 +5,7 @@ import torch.nn.parallel
 from torch.utils.data import DataLoader
 import torch.backends.cudnn as cudnn
 
-from dataloader.mvs_dataset import MVSTestSet
+from dataloader.own_mvs_dataset import MVSTestSet
 from networks.ucsnet import UCSNet
 from utils.utils import dict2cuda, dict2numpy, mkdir_p, save_cameras, write_pfm
 from Depth_Fusion.warp_func import *
@@ -112,17 +112,18 @@ def test_main(model, sample):
     scene_results['depth'] = []
     scene_results['confidence'] = []
     scene_results['feature'] = []
-    scene_results['scene_name'] = sample['scene_name']
 
     print('Process data ...')
     sample_cuda = dict2cuda(sample)
+    num_frames = frame_idxes.shape[1]
 
-    for frame_idx in tqdm(frame_idxes):
+    for i in tqdm(range(num_frames)):
+        frame_idx = frame_idxes[0,i]
         # print('Testing frame {} ...'.format(frame_idx[0]))
         # start_time = time.time()
         proj_matrices = {}
         for name in sample_cuda['proj_matrices'].keys():
-            proj_matrices[name] = sample_cuda['name'][:, frame_idx]
+            proj_matrices[name] = sample_cuda['proj_matrices'][name][:,frame_idx]
         outputs = model(sample_cuda["imgs"][:,frame_idx], proj_matrices, sample_cuda["depth_values"][:,frame_idx[0]])
         # end_time = time.time()
 
@@ -148,6 +149,7 @@ def test_main(model, sample):
     for key in scene_results.keys():
         scene_results[key] = torch.cat(scene_results[key], 0)
     scene_results['depth'] = scene_results['depth'].unsqueeze(1)
+    scene_results['scene_name'] = sample['scene_name']
 
     torch.cuda.empty_cache()
 
