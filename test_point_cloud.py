@@ -13,6 +13,7 @@ from Depth_Fusion.warp_func import *
 import argparse, time, cv2
 import numpy as np
 from collections import *
+from tqdm import tqdm
 
 cudnn.benchmark = True
 
@@ -89,76 +90,49 @@ def process_data(args, scene_results, thresh):
 
     return depths, projs, rgbs, probs, features
 
-def test_main(args):
-    # dataset, dataloader
-    testset = MVSTestSet(root_dir=args.root_path, data_list=args.test_list,
-                         max_h=args.max_h, max_w=args.max_w, num_views=args.num_views)
-    test_loader = DataLoader(testset, 1, shuffle=False, num_workers=4, drop_last=False)
+def test_main(model, sample):
+    # tim_cnt = 0
 
-    # build model
-    model = UCSNet(stage_configs=list(map(int, args.net_configs.split(","))),
-                   lamb=args.lamb)
+    scene_results = {}
+    # scene_results['cam', 'feature', 'rgb', 'confidence', 'depth', 'scene_name'] = list of tensor (len = frame)
 
-    # load checkpoint file specified by args.loadckpt
-    print("Loading model {} ...".format(args.ckpt))
-    state_dict = torch.load(args.ckpt, map_location=torch.device("cpu"))
-    model.load_state_dict(state_dict['model'], strict=True)
-    print('Success!')
+    frame_idxes = sample["frame_idxes"]
 
-    model = nn.DataParallel(model)
-    model.cuda()
-    model.eval()
+    # if frame_idx == 0:
+    #     if last_name != '':
+    #         for key in scene_results.keys():
+    #             scene_results[key] = torch.cat(scene_results[key], 0)
+    #         scene_results['depth'] = scene_results['depth'].unsqueeze(1)
+    #         results[last_name] = scene_results
 
-    tim_cnt = 0
+    #     last_name = scene_name
+    scene_results = {}
+    scene_results['rgb'] = []
+    scene_results['cam'] = []
+    scene_results['depth'] = []
+    scene_results['confidence'] = []
+    scene_results['feature'] = []
+    scene_results['scene_name'] = sample['scene_name']
 
-    results = {}
-    # results[scene_name]['cam', 'feature', 'rgb', 'confidence', 'depth'] = list of tensor (len = frame)
-    last_name = ''
+    print('Process data ...')
+    sample_cuda = dict2cuda(sample)
 
-    for batch_idx, sample in enumerate(test_loader):
-        scene_name = sample["scene_name"][0]
-        frame_idx = sample["frame_idx"][0][0]
+    for frame_idx in tqdm(frame_idxes):
+        # print('Testing frame {} ...'.format(frame_idx[0]))
+        # start_time = time.time()
+        proj_matrices = {}
+        for name in sample_cuda['proj_matrices'].keys():
+            proj_matrices[name] = sample_cuda['name'][:, frame_idx]
+        outputs = model(sample_cuda["imgs"][:,frame_idx], proj_matrices, sample_cuda["depth_values"][:,frame_idx[0]])
+        # end_time = time.time()
 
-        if frame_idx == 0:
-            if last_name != '':
-                for key in scene_results.keys():
-                    scene_results[key] = torch.cat(scene_results[key], 0)
-                scene_results['depth'] = scene_results['depth'].unsqueeze(1)
-                results[last_name] = scene_results
+        # tim_cnt += (end_time - start_time)
 
-            last_name = scene_name
-            scene_results = {}
-            scene_results['rgb'] = []
-            scene_results['cam'] = []
-            scene_results['depth'] = []
-            scene_results['confidence'] = []
-            scene_results['feature'] = []
+        # print('Finished {}/{}, time: {:.2f}s ({:.2f}s/frame).'.format(batch_idx+1, len(test_loader), end_time-start_time,
+        #                                                         tim_cnt / (batch_idx + 1.)))
 
-        print('Process data ...')
-        sample_cuda = dict2cuda(sample)
-
-        print('Testing {} frame {} ...'.format(scene_name, frame_idx))
-        start_time = time.time()
-        outputs = model(sample_cuda["imgs"], sample_cuda["proj_matrices"], sample_cuda["depth_values"])
-        end_time = time.time()
-
-        # outputs = dict2numpy(outputs)
-        del sample_cuda
-
-        tim_cnt += (end_time - start_time)
-
-        print('Finished {}/{}, time: {:.2f}s ({:.2f}s/frame).'.format(batch_idx+1, len(test_loader), end_time-start_time,
-                                                               tim_cnt / (batch_idx + 1.)))
-
-        scene_results['rgb'].append(torch.clamp(sample['imgs'][0, 0]*255, 0, 255).permute(1, 2, 0).unsqueeze(0)) # not multiplied by 255 yet
-        scene_results['cam'].append(sample['proj_matrices']['stage3'][0, 0].unsqueeze(0))
-
-        # ref_img = sample["imgs"][0, 0].numpy().transpose(1, 2, 0) * 255
-        # ref_img = np.clip(ref_img, 0, 255).astype(np.uint8)
-        # Image.fromarray(ref_img).save(rgb_path+'/{:08d}.png'.format(frame_idx))
-
-        # cam = sample["proj_matrices"]["stage3"][0, 0].numpy()
-        # save_cameras(cam, cam_path+'/cam_{:08d}.txt'.format(frame_idx))
+        scene_results['rgb'].append(torch.clamp(sample['imgs'][0, frame_idx[0]]*255, 0, 255).permute(1, 2, 0).unsqueeze(0)) # not multiplied by 255 yet
+        scene_results['cam'].append(proj_matrices['stage3'][0, 0].unsqueeze(0))
 
         res = outputs['stage3']
         h, w = res['depth'][0].shape
@@ -167,69 +141,68 @@ def test_main(args):
         scene_results['confidence'].append(confidence.unsqueeze(0))
         scene_results['feature'].append(res['feature'][0].permute((1, 2, 0)).unsqueeze(0))
 
-        print('Saved results for {}/{} (resolution: {})'.format(scene_name, frame_idx, res['depth'][0].shape))
+        # print('Saved results for {}/{} (resolution: {})'.format(scene_name, frame_idx, res['depth'][0].shape))
+
+    del sample_cuda
 
     for key in scene_results.keys():
         scene_results[key] = torch.cat(scene_results[key], 0)
     scene_results['depth'] = scene_results['depth'].unsqueeze(1)
-    results[last_name] = scene_results
 
     torch.cuda.empty_cache()
 
-    return results
+    return scene_results
 
 
-def point_cloud_main(args, results):
-    # results[scene_name]['cam', 'feature', 'rgb', 'confidence', 'depth'] = list of tensor (len = frame)
+def point_cloud_main(args, scene_results):
+    # results['cam', 'feature', 'rgb', 'confidence', 'depth', 'scene_name'] = list of tensor (len = frame)
 
-    for scene in results.keys():
-        scene_results = results[scene]
-        depths, projs, rgbs, probs, features = process_data(args, scene_results, args.prob_thresh)
-        tot_frame = depths.shape[0]
-        height, width = depths.shape[2], depths.shape[3]
-        points = []
-        points_prob = []
-        points_feature = []
+    depths, projs, rgbs, probs, features = process_data(args, scene_results, args.prob_thresh)
+    tot_frame = depths.shape[0]
+    height, width = depths.shape[2], depths.shape[3]
+    points = []
+    points_prob = []
+    points_feature = []
 
-        print('Scene: {} total: {} frames'.format(scene, tot_frame))
-        for i in range(tot_frame):
-            pc_buff = torch.zeros((3, height, width), device=depths.device, dtype=depths.dtype)
-            val_cnt = torch.zeros((1, height, width), device=depths.device, dtype=depths.dtype)
-            j = 0
-            batch_size = 20
+    # print('Scene: {} total: {} frames'.format(scene, tot_frame))
+    for i in tqdm(range(tot_frame)):
+        pc_buff = torch.zeros((3, height, width), device=depths.device, dtype=depths.dtype)
+        val_cnt = torch.zeros((1, height, width), device=depths.device, dtype=depths.dtype)
+        j = 0
+        batch_size = 20
 
-            while True:
-                ref_pc, pcs, dist = filter_depth(ref_depth=depths[i:i+1], src_depths=depths[j:min(j+batch_size, tot_frame)],
-                                                    ref_proj=projs[i:i+1], src_projs=projs[j:min(j+batch_size, tot_frame)])
-                masks = (dist < args.dist_thresh).float()
-                masked_pc = pcs * masks
-                pc_buff += masked_pc.sum(dim=0, keepdim=False)
-                val_cnt += masks.sum(dim=0, keepdim=False)
+        while True:
+            ref_pc, pcs, dist = filter_depth(ref_depth=depths[i:i+1], src_depths=depths[j:min(j+batch_size, tot_frame)],
+                                                ref_proj=projs[i:i+1], src_projs=projs[j:min(j+batch_size, tot_frame)])
+            masks = (dist < args.dist_thresh).float()
+            masked_pc = pcs * masks
+            pc_buff += masked_pc.sum(dim=0, keepdim=False)
+            val_cnt += masks.sum(dim=0, keepdim=False)
 
-                j += batch_size
-                if j >= tot_frame:
-                    break
+            j += batch_size
+            if j >= tot_frame:
+                break
 
-            final_mask = (val_cnt >= args.num_consist).squeeze(0)
-            avg_points = torch.div(pc_buff, val_cnt).permute(1, 2, 0)
+        final_mask = (val_cnt >= args.num_consist).squeeze(0)
+        avg_points = torch.div(pc_buff, val_cnt).permute(1, 2, 0)
 
-            final_pc, pc_prob, pc_feature = extract_points(avg_points, final_mask, rgbs[i], probs[i], features[i])
-            points.append(final_pc)
-            points_prob.append(pc_prob)
-            points_feature.append(pc_feature)
-            print('Processing {} {}/{} ...'.format(scene, i+1, tot_frame))
-            # np.save('{}/{}/{:08d}.npy'.format(args.save_path, scene, i+1), final_pc)
+        final_pc, pc_prob, pc_feature = extract_points(avg_points, final_mask, rgbs[i], probs[i], features[i])
+        points.append(final_pc)
+        points_prob.append(pc_prob)
+        points_feature.append(pc_feature)
+        # print('Processing {} {}/{} ...'.format(scene, i+1, tot_frame))
+        # np.save('{}/{}/{:08d}.npy'.format(args.save_path, scene, i+1), final_pc)
 
-        point_cloud = {}
-        point_cloud['points_with_color'] = np.concatenate(points, axis=0)
-        point_cloud['confidence'] = np.concatenate(points_prob)
-        point_cloud['feature'] = np.concatenate(points_feature)
+    point_cloud = {}
+    point_cloud['points_with_color'] = np.concatenate(points, axis=0)
+    point_cloud['confidence'] = np.concatenate(points_prob)
+    point_cloud['feature'] = np.concatenate(points_feature)
 
-        del points, depths, rgbs, projs
+    del points, depths, rgbs, projs
 
-        print('Save {} successful.'.format(scene))
+    # print('Save {} successful.'.format(scene))
 
-        return point_cloud
+    return point_cloud
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Test UCSNet.')
@@ -254,5 +227,24 @@ if __name__ == '__main__':
     args = parser.parse_args([])
 
     with torch.no_grad():
-        results = test_main(args)
-        point_cloud = point_cloud_main(args, results)
+        # dataset, dataloader
+        testset = MVSTestSet(root_dir=args.root_path, data_list=args.test_list,
+                            max_h=args.max_h, max_w=args.max_w, num_views=args.num_views)
+        test_loader = DataLoader(testset, 1, shuffle=False, num_workers=4, drop_last=False)
+        # build model
+        model = UCSNet(stage_configs=list(map(int, args.net_configs.split(","))),
+                    lamb=args.lamb)
+
+        # load checkpoint file specified by args.loadckpt
+        print("Loading model {} ...".format(args.ckpt))
+        state_dict = torch.load(args.ckpt, map_location=torch.device("cpu"))
+        model.load_state_dict(state_dict['model'], strict=True)
+        print('Success!')
+
+        model = nn.DataParallel(model)
+        model.cuda()
+        model.eval()
+
+        for batch_idx, sample in enumerate(test_loader):
+            results = test_main(model, sample)
+            point_cloud = point_cloud_main(args, results)
